@@ -25,16 +25,14 @@ func main() {
 			return err
 		}
 
-		body["type"] = "broadcast_ok"
-
 		values.Lock()
 		values.data = append(values.data, int(body["message"].(float64)))
 		values.Unlock()
 
-		// replyには不要な情報であるため削除
-		delete(body, "message")
+		repbody := make(map[string]any)
+		repbody["type"] = "broadcast_ok"
 
-		return n.Reply(msg, body)
+		return n.Reply(msg, repbody)
 	})
 
 	n.Handle("read", func (msg maelstrom.Message) error {
@@ -43,13 +41,13 @@ func main() {
 			return err
 		}
 
-		body["type"] = "read_ok"
-
+		repbody := make(map[string]any)
+		repbody["type"] = "read_ok"
 		values.RLock()
-		body["messages"] = values.data
+		repbody["messages"] = values.data
 		values.RUnlock()
 
-		return n.Reply(msg, body)
+		return n.Reply(msg, repbody)
 	})
 
 	n.Handle("topology", func (msg maelstrom.Message) error {
@@ -58,12 +56,10 @@ func main() {
 			return err
 		}
 
-		body["type"] = "topology_ok"
+		repbody := make(map[string]any)
+		repbody["type"] = "topology_ok"
 
-		// replyには不要な情報であるため削除
-		delete(body, "topology")
-
-		return n.Reply(msg, body)
+		return n.Reply(msg, repbody)
 	})
 
 	if err := n.Run(); err != nil {
