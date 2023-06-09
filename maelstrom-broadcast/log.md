@@ -31,3 +31,31 @@ Everything looks good! ヽ(‘ー`)ノ
     - Replyするときの実装がechoを使いまわしたせいで非効率になっているかもしれない
         - `delete`なんて使わずに、Reply用のbodyを別で生成する方がコードの意味的にも自然な気はする
     - 済: `repbody`という変数を用意する実装に変えた
+
+
+## 3b: Multi-Node Broadcast
+[Challenge #3b: Multi-Node Broadcast · Fly Docs](https://fly.io/dist-sys/3b/)
+
+### 実装
+- messageの更新が起こったノードのみbroadcastさせる
+    - このようにすることで、同じ更新を要求するRPCが循環し続けるということがなくなる
+        - 更新は1つのノードについて高々1回であるため
+    - 過去のmessage全てをやり取りするのではなく、更新で生じた差分だけをやり取りしている
+        - 全部やり取りしようとするとかえって実装が面倒になる気がする
+- topology RPCで与えられた情報に従ってbroadcastの先を決める
+    - topologyの更新が起こりうるので接続の情報を読み書きするときはRWLockをかける
+
+### テスト
+```sh
+../maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 5 --time-limit 20 --rate 10
+```
+
+```
+Everything looks good! ヽ(‘ー`)ノ
+```
+OK
+
+### やり残していること
+- 深く考えずに`Send`を使ってbroadcastしている
+    - 更新が成功しなかったときに再送する処理を入れるほうがいいのかもしれない
+    - 今回のケースで仮定している状況では大丈夫そうに思えるのでスルーしてしまったが
