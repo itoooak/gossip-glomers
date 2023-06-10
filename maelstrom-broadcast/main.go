@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
@@ -27,6 +29,9 @@ func main() {
 		make(map[string][]string),
 	}
 
+	broadcaster := createBroadcaster(n, 10)
+	defer broadcaster.drop()
+
 	n.Handle("broadcast", func(msg maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -43,7 +48,7 @@ func main() {
 		if !alreadyExists {
 			topology.RLock()
 			for _, neighbor := range topology.data[n.ID()] {
-				n.Send(neighbor, body)
+				broadcaster.send(bcastMessage{dest: neighbor, body: body})
 			}
 			topology.RUnlock()
 		}
@@ -98,4 +103,50 @@ func main() {
 	if err := n.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func createBroadcaster(node *maelstrom.Node, workerNum int) *broadcaster {
+	ch := make(chan bcastMessage, 1000)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	for i := 0; i < workerNum; i++ {
+		go func() {
+			for {
+				select {
+				case msg := <-ch:
+					ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+					if _, err := node.SyncRPC(ctx, msg.dest, msg.body); err != nil {
+						ch <- msg
+					}
+					cancel()
+					break
+
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	return &broadcaster{
+		ch: ch, cancel: cancel,
+	}
+}
+
+func (bc *broadcaster) send(msg bcastMessage) {
+	bc.ch <- msg
+}
+
+func (bc *broadcaster) drop() {
+	bc.cancel()
+}
+
+type broadcaster struct {
+	ch     chan (bcastMessage)
+	cancel context.CancelFunc
+}
+
+type bcastMessage struct {
+	dest string
+	body map[string]any
 }
